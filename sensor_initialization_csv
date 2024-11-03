@@ -1,0 +1,80 @@
+import requests
+import pandas as pd
+import os
+
+# PurpleAir API key
+API_KEY = "EAC45729-3AB7-11EE-A77F-42010A800009"
+
+# Define the CSV file path relative to the script location
+DATA_FILE = os.path.join(os.path.dirname(__file__), "sensor_data.csv")
+
+# Function to fetch sensor metadata from PurpleAir API
+def get_sensor_metadata(sensor_id):
+    url = f"https://api.purpleair.com/v1/sensors/{sensor_id}"
+    headers = {
+        "X-API-Key": API_KEY
+    }
+    response = requests.get(url, headers=headers)
+
+    if response.status_code == 200:
+        sensor_data = response.json()
+        sensor_info = sensor_data['sensor']
+        sensor_name = sensor_info.get('name', 'Unknown')
+        latitude = sensor_info.get('latitude', None)
+        longitude = sensor_info.get('longitude', None)
+        return sensor_id, sensor_name, latitude, longitude
+    else:
+        print(f"Error fetching metadata for sensor {sensor_id}: {response.status_code}")
+        return None
+
+# Function to initialize or update DataFrame with sensor metadata
+def create_sensor_df(sensor_ids, file_path):
+    # Check if the file already exists
+    if os.path.exists(file_path):
+        # Load existing data from the file
+        existing_df = pd.read_csv(file_path)
+    else:
+        # Create an empty DataFrame if the file does not exist
+        existing_df = pd.DataFrame(columns=["Sensor ID", "Sensor Name", "Latitude", "Longitude", "Days Over Threshold"])
+
+    # Initialize an empty list to store new sensor data
+    sensor_list = []
+
+    # Loop over each sensor ID
+    for sensor_id in sensor_ids:
+        # Check if sensor_id is already in existing DataFrame
+        if sensor_id not in existing_df["Sensor ID"].values:
+            # Fetch metadata for the new sensor
+            sensor_info = get_sensor_metadata(sensor_id)
+            if sensor_info:
+                # Append new sensor data with Days Over Threshold initialized to 0
+                sensor_list.append({
+                    "Sensor ID": sensor_info[0],
+                    "Sensor Name": sensor_info[1],
+                    "Latitude": sensor_info[2],
+                    "Longitude": sensor_info[3],
+                    "Days Over Threshold": 0
+                })
+
+    # Create a DataFrame for the new sensors
+    new_sensors_df = pd.DataFrame(sensor_list)
+
+    # Concatenate the existing and new sensors data
+    updated_df = pd.concat([existing_df, new_sensors_df], ignore_index=True)
+
+    # Remove duplicates if any (keeping the first occurrence)
+    updated_df = updated_df.drop_duplicates(subset=["Sensor ID"], keep="first")
+
+    # Save the updated DataFrame back to the file
+    updated_df.to_csv(file_path, index=False)
+
+    return updated_df
+
+# Example usage: list of sensor IDs
+sensor_ids = ['118509', '120937', '97139']
+
+# Create or update DataFrame with sensor metadata and Days Over Threshold column
+sensor_df = create_sensor_df(sensor_ids, DATA_FILE)
+
+# Display the resulting DataFrame
+print(sensor_df)
